@@ -3,22 +3,47 @@ import numpy as np
 OPTIMAL = 0
 INFINITE = 1
 
+# Verifica se alguma linha da matriz b tem valores negativos. Se tiver, multiplica por -1
+def verify_neg_b(tableau):
+  negB = np.where(tableau[:, -1] < 0)[0]
+
+  tableau[negB] *= (-1)
+  
+  return tableau
+
 # Função auxiliar que adiciona variáveis de folga
 def add_slack_vars(A, b, n):
   A = np.append(A, np.identity(n), axis=1)
   return np.append(A, b.reshape((n, 1)), axis=1)
 
-# Função auxiliar que gera um tableau a partir de uma matriz A e uma matriz c
-def get_tableau(A, c, n, m):
-  c = c * (-1)
-  c = np.append(c, np.zeros(n + 1))
-  # Parte direita do tableau
-  A = np.append(c.reshape((1, m + n + 1)), A, axis=0)
+# Adiciona a matriz de registro de operações
+def add_vero(A, n):
+  return np.append(np.identity(n), A, axis=1)
 
-  # Parte esquerda do tableau
-  tableau = np.append(np.zeros((1, n)), np.identity(n), axis=0)
-  
-  return np.append(tableau, A, axis=1)
+# Função auxiliar que gera um tableau a partir de uma matriz A e uma matriz c
+def get_tableau(A, b, c, n, m):
+  A_tableau = add_slack_vars(A, b, n)
+  A_tableau = add_vero(A_tableau, n)
+  A_tableau = verify_neg_b(A_tableau)
+
+  c_tableau = c.reshape((1, m))
+  c_tableau = c_tableau * (-1)
+  c_tableau = np.append(c_tableau, np.zeros(n + 1))
+  c_tableau = np.append(np.zeros(n), c_tableau)
+
+  return np.append(c_tableau.reshape((1, n + m + n + 1)), A_tableau, axis=0)
+
+# Função que gera o tableau PL auxiliar a partir de A e b
+def get_aux_lp(A, b, n):
+  A_aux = add_slack_vars(A, b, n)
+  A_aux = add_vero(A_aux, n)
+  A_aux = verify_neg_b(A_aux)
+  aux = np.append(np.zeros((1, A_aux.shape[1])), A_aux, axis=0)
+
+  # Somando as linhas de A na parte de cima do tableau para ficar em forma canônica
+  aux[0] = np.sum(A_aux, axis=0) * (-1)
+
+  return aux
 
 def find_solution(tableau, n, m):
   x = []
@@ -54,7 +79,7 @@ def simplex(tableau, n, m):
 
       certificate = tableau[0, :n]
       
-      return OPTIMAL, (optimalVal, x, certificate)
+      return OPTIMAL, (np.round(optimalVal, 7), np.round(x, 7), np.round(certificate, 7))
 
     # Pega a coluna de menor índice em cN. É preciso somar n para corrigir o índice
     k = cNIndex[0] + n
@@ -72,41 +97,30 @@ def simplex(tableau, n, m):
       for i, j in basisColumns:
         certificate[i] = Ak[j] * (-1)
 
-      return INFINITE, (x, certificate)
+      return INFINITE, (np.round(x, 7), np.round(certificate, 7))
 
-    # Pega apenas os valores não nulos de Ak
-    gt0columns = np.where(Ak > 0)[0]
-    tableau[1:, -1][gt0columns] / Ak[gt0columns]
+    # Pega apenas os valores positivos de Ak
+    gt0values = np.where(Ak > 0)[0]
 
-    minDiv = np.argmin(tableau[1:, -1][gt0columns] / Ak[gt0columns])
+    # Escolhe o valor que minimiza a razão com o valor em b
+    minDiv = np.argmin(tableau[1:, -1][gt0values] / Ak[gt0values])
     # É preciso somar 1 para corrigir o índice
-    r = gt0columns[minDiv] + 1
+    r = gt0values[minDiv] + 1
 
     tableau[r] = tableau[r] * (1 / tableau[r, k])
 
+    print(tableau)
+    print()
     # Eliminação Gaussiana
     # O objetivo é colocar o tableau na forma canônica
     for i in range(0, n + 1):
       if i != r and tableau[i, k] != 0:
         tableau[i] -= tableau[i, k] * tableau[r]
-
-# Função que gera o tableau PL auxiliar a partir de A e b
-def get_aux_lp(A, b, n, m):
-  aux = np.append(A, np.identity(n), axis=1)
-  aux = np.append(aux, b.reshape((n, 1)), axis=1)
-  aux = np.append(np.zeros((1, m + n + 1)), aux, axis=0)
-
-  aux[0, :m] = np.sum(A, axis=0) * (-1)
-  aux[0, -1] = np.sum(aux[:, -1], axis=0) * (-1)
-
-  vero = np.append(np.zeros((1, n)), np.identity(n), axis=0)
-  aux = np.append(vero, aux, axis=1)
-
-  aux[0, :n] = np.ones((1, n)) * (-1)
-
-  return aux
+    print(tableau)
+    print()
 
 def main():
+  # n restrições e m variáveis
   [n, m] = input().split()
   n, m = int(n), int(m)
 
@@ -121,22 +135,21 @@ def main():
     b.append(a[-1])
 
   b = np.asarray(b, dtype=np.float64)
-  
-  # Fazendo simplex na PL auxiliar
-  aux = get_aux_lp(A, b, n, m)
+
+  aux = get_aux_lp(A, b, n)
+  print(aux)
   result, (optimalVal, x, certificate) = simplex(aux, n, m)
   if optimalVal < 0:
     print('inviavel')
     print(*certificate)
     return
 
-  # Adicionando variáveis de folga para ficar em FPI
-  A = add_slack_vars(A, b, n)
-
   # Monta o tableau
-  tableau = get_tableau(A, c, n, m)
+  tableau = get_tableau(A, b, c, n, m)
+  print(A)
   
   result, values = simplex(tableau, n, m)
+  print(tableau)
 
   if result == OPTIMAL:
     optimalVal, x, certificate = values
