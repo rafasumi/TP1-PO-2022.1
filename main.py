@@ -1,4 +1,6 @@
 import numpy as np
+np.set_printoptions(linewidth=1000)
+
 
 OPTIMAL = 0
 INFINITE = 1
@@ -24,7 +26,7 @@ def add_vero(A, n):
 def get_tableau(A, b, c, n, m):
   A_tableau = add_slack_vars(A, b, n)
   A_tableau = add_vero(A_tableau, n)
-  A_tableau = verify_neg_b(A_tableau)
+  # A_tableau = verify_neg_b(A_tableau)
 
   c_tableau = c.reshape((1, m))
   c_tableau = c_tableau * (-1)
@@ -117,7 +119,34 @@ def simplex(tableau, n, m):
       if i != r and tableau[i, k] != 0:
         tableau[i] -= tableau[i, k] * tableau[r]
     print(tableau)
-    print()
+    print('----------')
+
+def dual_simplex(tableau, n, m):
+  while((tableau[1:, -1] < 0).any()):
+    # Linhas com valor negativo em b
+    negBIndex = np.where(tableau[1:, -1] < 0)[0]
+    # Menor índice da linha negativa em b
+    k = negBIndex[0] + 1
+    Ak = tableau[k, :]
+
+    # Pega apenas os valores negativos de Ak cujo c associado é positivo
+    lt0AkValues = np.where(Ak < 0)[0]
+    lt0cValues = np.where(tableau[0, lt0AkValues] > 0)
+
+    validValues = lt0AkValues[lt0cValues]
+
+    minDiv = np.argmin(tableau[0, validValues] / (-1 * Ak[validValues]))
+    pivotIndex = validValues[minDiv]
+
+    tableau[k] = tableau[k] * (1 / tableau[k, pivotIndex])
+
+    # Eliminação Gaussiana
+    # O objetivo é colocar o tableau na forma canônica
+    for i in range(0, n + 1):
+      if i != k and tableau[i, pivotIndex] != 0:
+        tableau[i] -= tableau[i, pivotIndex] * tableau[k]
+
+  return tableau
 
 def main():
   # n restrições e m variáveis
@@ -138,18 +167,25 @@ def main():
 
   aux = get_aux_lp(A, b, n)
   print(aux)
+  print('---------------SIMPLEX AUXILIAR---------------')
   result, (optimalVal, x, certificate) = simplex(aux, n, m)
   if optimalVal < 0:
     print('inviavel')
     print(*certificate)
+    print(certificate.dot(A))
+    print(certificate.dot(b))
     return
 
   # Monta o tableau
   tableau = get_tableau(A, b, c, n, m)
-  print(A)
-  
-  result, values = simplex(tableau, n, m)
   print(tableau)
+
+  # Caso em que é necessário usar o simplex dual: c todo negativo e algum valor negativo em b
+  if (c < 0).all() and (b < 0).any():
+    tableau = dual_simplex(tableau, n, m)
+  
+  print('-------------------SIMPLEX-------------------')
+  result, values = simplex(tableau, n, m)
 
   if result == OPTIMAL:
     optimalVal, x, certificate = values
@@ -162,6 +198,9 @@ def main():
     print('ilimitada')
     print(*x)
     print(*certificate)
+    print(A.dot(x))
+    print(A.dot(certificate))
+    print(c.dot(certificate))
 
 if __name__ == '__main__':
   main()
