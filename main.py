@@ -1,6 +1,4 @@
 import numpy as np
-np.set_printoptions(linewidth=1000)
-
 
 OPTIMAL = 0
 INFINITE = 1
@@ -26,7 +24,6 @@ def add_vero(A, n):
 def get_tableau(A, b, c, n, m):
   A_tableau = add_slack_vars(A, b, n)
   A_tableau = add_vero(A_tableau, n)
-  # A_tableau = verify_neg_b(A_tableau)
 
   c_tableau = c.reshape((1, m))
   c_tableau = c_tableau * (-1)
@@ -44,6 +41,9 @@ def get_aux_lp(A, b, n):
 
   # Somando as linhas de A na parte de cima do tableau para ficar em forma canônica
   aux[0] = np.sum(A_aux, axis=0) * (-1)
+
+  aux_left = np.append(np.zeros((1, n)), np.identity(n), axis=0)
+  aux = np.append(np.append(aux[:, :-1], aux_left, axis=1), aux[:, -1].reshape((n + 1, 1)), axis=1)
 
   return aux
 
@@ -111,29 +111,27 @@ def simplex(tableau, n, m):
 
     tableau[r] = tableau[r] * (1 / tableau[r, k])
 
-    print(tableau)
-    print()
     # Eliminação Gaussiana
     # O objetivo é colocar o tableau na forma canônica
     for i in range(0, n + 1):
       if i != r and tableau[i, k] != 0:
         tableau[i] -= tableau[i, k] * tableau[r]
-    print(tableau)
-    print('----------')
 
 def dual_simplex(tableau, n, m):
-  while((tableau[1:, -1] < 0).any()):
+  while((tableau[1:, -1] < 0).any() and (tableau[0, n:-1] >= 0).any()):
     # Linhas com valor negativo em b
     negBIndex = np.where(tableau[1:, -1] < 0)[0]
-    # Menor índice da linha negativa em b
+    # Menor índice com linha negativa em b
     k = negBIndex[0] + 1
     Ak = tableau[k, :]
 
-    # Pega apenas os valores negativos de Ak cujo c associado é positivo
-    lt0AkValues = np.where(Ak < 0)[0]
-    lt0cValues = np.where(tableau[0, lt0AkValues] > 0)
+    # Pega apenas os valores negativos de Ak cujo c associado é não negativo
+    lt0AkValues = np.where(Ak[:-1] < 0)[0]
+    lt0cValues = np.where(tableau[0, lt0AkValues] >= 0)
 
     validValues = lt0AkValues[lt0cValues]
+
+    if (len(validValues) == 0): break
 
     minDiv = np.argmin(tableau[0, validValues] / (-1 * Ak[validValues]))
     pivotIndex = validValues[minDiv]
@@ -164,27 +162,30 @@ def main():
     b.append(a[-1])
 
   b = np.asarray(b, dtype=np.float64)
-
+  
   aux = get_aux_lp(A, b, n)
-  print(aux)
-  print('---------------SIMPLEX AUXILIAR---------------')
-  result, (optimalVal, x, certificate) = simplex(aux, n, m)
-  if optimalVal < 0:
-    print('inviavel')
+
+  result, values = simplex(aux, n, m)
+  if result == OPTIMAL:
+    optimalVal, x, certificate = values
+    if optimalVal < 0:
+      print('inviavel')
+      print(*certificate)
+      return
+  elif result == INFINITE:
+    x, certificate = values
+    print('ilimitada')
+    print(*x)
     print(*certificate)
-    print(certificate.dot(A))
-    print(certificate.dot(b))
     return
 
   # Monta o tableau
   tableau = get_tableau(A, b, c, n, m)
-  print(tableau)
 
   # Caso em que é necessário usar o simplex dual: c todo negativo e algum valor negativo em b
-  if (c < 0).all() and (b < 0).any():
+  if (c <= 0).any() and (b < 0).any():
     tableau = dual_simplex(tableau, n, m)
-  
-  print('-------------------SIMPLEX-------------------')
+
   result, values = simplex(tableau, n, m)
 
   if result == OPTIMAL:
@@ -198,9 +199,6 @@ def main():
     print('ilimitada')
     print(*x)
     print(*certificate)
-    print(A.dot(x))
-    print(A.dot(certificate))
-    print(c.dot(certificate))
 
 if __name__ == '__main__':
   main()
