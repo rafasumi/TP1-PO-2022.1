@@ -21,16 +21,27 @@ def add_vero(A, n):
   return np.append(np.identity(n), A, axis=1)
 
 # Função auxiliar que gera um tableau a partir de uma matriz A e uma matriz c
-def get_tableau(A, b, c, n, m):
-  A_tableau = add_slack_vars(A, b, n)
-  A_tableau = add_vero(A_tableau, n)
+def get_tableau(tableau_aux, c, n, m, basisColumns):
+  # Copiando parte de baixo do tableau da auxiliar, exceto as variáveis de folga da auxiliar
+  tableau = np.append(tableau_aux[:, :-n-1], tableau_aux[:, -1].reshape((n, 1)), axis=1)
 
+  # Gerando o vetor c para o tableau
   c_tableau = c.reshape((1, m))
   c_tableau = c_tableau * (-1)
   c_tableau = np.append(c_tableau, np.zeros(n + 1))
   c_tableau = np.append(np.zeros(n), c_tableau)
 
-  return np.append(c_tableau.reshape((1, n + m + n + 1)), A_tableau, axis=0)
+  # Gerando o tableau
+  tableau = np.append(c_tableau.reshape((1, n + m + n + 1)), tableau, axis=0)
+  
+  # Colocando o tableau em forma canônica, caso não esteja após unir o c com o tableau da auxiliar
+  notCanonColumns = np.where(tableau[0, [i[0] + n for i in basisColumns]] != 0)[0]
+  if notCanonColumns.size > 0:
+    for column in notCanonColumns:
+      col, row = basisColumns[column]
+      tableau[0] -= tableau[0, col + n] * tableau[row + 1]
+
+  return tableau
 
 # Função que gera o tableau PL auxiliar a partir de A e b
 def get_aux_lp(A, b, n):
@@ -77,11 +88,11 @@ def simplex(tableau, n, m):
       # Possui valor ótimo
       optimalVal = tableau[0, -1]
 
-      x, _ = find_solution(tableau, n, m)
+      x, basisColumns = find_solution(tableau, n, m)
 
       certificate = tableau[0, :n]
       
-      return OPTIMAL, (np.round(optimalVal, 7), np.round(x, 7), np.round(certificate, 7))
+      return OPTIMAL, (np.round(optimalVal, 7), np.round(x, 7), np.round(certificate, 7)), tableau, basisColumns
 
     # Pega a coluna de menor índice em cN. É preciso somar n para corrigir o índice
     k = cNIndex[0] + n
@@ -92,14 +103,14 @@ def simplex(tableau, n, m):
       # É ilimitada
       x, basisColumns = find_solution(tableau, n, m)
       # Fixa a coluna k como 1 no certificado e define os outros valores como 0
-      certificate = [0.0] * m
+      certificate = [0.0] * (m + n)
       certificate[k - n] = 1.0
 
       # Corrige os valores no certificado para as colunas da base, de modo que A.dot(certificate) = 0
       for i, j in basisColumns:
         certificate[i] = Ak[j] * (-1)
 
-      return INFINITE, (np.round(x, 7), np.round(certificate, 7))
+      return INFINITE, (np.round(x, 7), np.round(certificate[:m], 7)), tableau, basisColumns
 
     # Pega apenas os valores positivos de Ak
     gt0values = np.where(Ak > 0)[0]
@@ -116,35 +127,6 @@ def simplex(tableau, n, m):
     for i in range(0, n + 1):
       if i != r and tableau[i, k] != 0:
         tableau[i] -= tableau[i, k] * tableau[r]
-
-def dual_simplex(tableau, n, m):
-  while((tableau[1:, -1] < 0).any() and (tableau[0, n:-1] >= 0).any()):
-    # Linhas com valor negativo em b
-    negBIndex = np.where(tableau[1:, -1] < 0)[0]
-    # Menor índice com linha negativa em b
-    k = negBIndex[0] + 1
-    Ak = tableau[k, :]
-
-    # Pega apenas os valores negativos de Ak cujo c associado é não negativo
-    lt0AkValues = np.where(Ak[:-1] < 0)[0]
-    lt0cValues = np.where(tableau[0, lt0AkValues] >= 0)
-
-    validValues = lt0AkValues[lt0cValues]
-
-    if (len(validValues) == 0): break
-
-    minDiv = np.argmin(tableau[0, validValues] / (-1 * Ak[validValues]))
-    pivotIndex = validValues[minDiv]
-
-    tableau[k] = tableau[k] * (1 / tableau[k, pivotIndex])
-
-    # Eliminação Gaussiana
-    # O objetivo é colocar o tableau na forma canônica
-    for i in range(0, n + 1):
-      if i != k and tableau[i, pivotIndex] != 0:
-        tableau[i] -= tableau[i, pivotIndex] * tableau[k]
-
-  return tableau
 
 def main():
   # n restrições e m variáveis
@@ -163,9 +145,10 @@ def main():
 
   b = np.asarray(b, dtype=np.float64)
   
+  # Gera a PL auxiliar e faz o Simplex para verificar se a PL original é viável ou inviável
   aux = get_aux_lp(A, b, n)
 
-  result, values = simplex(aux, n, m)
+  result, values, tableau_aux, basisColumns = simplex(aux, n, m)
   if result == OPTIMAL:
     optimalVal, x, certificate = values
     if optimalVal < 0:
@@ -178,15 +161,11 @@ def main():
     print(*x)
     print(*certificate)
     return
-
+  
   # Monta o tableau
-  tableau = get_tableau(A, b, c, n, m)
+  tableau = get_tableau(tableau_aux[1:, :], c, n, m, basisColumns)
 
-  # Caso em que é necessário usar o simplex dual: c todo negativo e algum valor negativo em b
-  if (c <= 0).any() and (b < 0).any():
-    tableau = dual_simplex(tableau, n, m)
-
-  result, values = simplex(tableau, n, m)
+  result, values, _, _ = simplex(tableau, n, m)
 
   if result == OPTIMAL:
     optimalVal, x, certificate = values
