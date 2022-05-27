@@ -127,7 +127,6 @@ def simplex(tableau, n, m):
     for i in range(0, n + 1):
       if i != r and tableau[i, k] != 0:
         tableau[i] -= tableau[i, k] * tableau[r]
-
 def main():
   # n restrições e m variáveis
   [n, m] = input().split()
@@ -150,17 +149,17 @@ def main():
 
   result, values, tableau_aux, basisColumns = simplex(aux, n, m)
   if result == OPTIMAL:
-    optimalVal, x, certificate = values
+    optimalVal, _, certificate = values
     if optimalVal < 0:
       print('inviavel')
       print(*certificate)
       return
   elif result == INFINITE:
-    x, certificate = values
-    print('ilimitada')
-    print(*x)
-    print(*certificate)
-    return
+    _, certificate = values
+    if np.round(tableau_aux[0, -1], 7) < 0:
+      print('inviavel')
+      print(*certificate)
+      return
   
   # Monta o tableau
   tableau = get_tableau(tableau_aux[1:, :], c, n, m, basisColumns)
