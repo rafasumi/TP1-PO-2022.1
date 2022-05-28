@@ -1,4 +1,5 @@
 import numpy as np
+np.set_printoptions(linewidth=10000)
 
 OPTIMAL = 0
 INFINITE = 1
@@ -35,7 +36,7 @@ def get_tableau(tableau_aux, c, n, m, basisColumns):
   tableau = np.append(c_tableau.reshape((1, n + m + n + 1)), tableau, axis=0)
   
   # Colocando o tableau em forma canônica, caso não esteja após unir o c com o tableau da auxiliar
-  notCanonColumns = np.where(tableau[0, [i[0] + n for i in basisColumns]] != 0)[0]
+  notCanonColumns = np.where(np.round(tableau[0, [i[0] + n for i in basisColumns]], 7) != 0)[0]
   if notCanonColumns.size > 0:
     for column in notCanonColumns:
       col, row = basisColumns[column]
@@ -62,12 +63,13 @@ def find_solution(tableau, n, m):
   x = []
   # Lista com as colunas da base e a linha onde fica o valor 1
   basisColumns = []
-  
+
   # Itera pelas colunas de A
   for i in range(n, n + m):
-    if (tableau[0, i] == 0):
-      pivotIndex = np.where(tableau[:, i] != 0)[0]
-      if pivotIndex.size > 1 or tableau[:, i][pivotIndex[0]] != 1:
+    if tableau[0, i] < 1e-7:
+      pivotIndex = np.where(np.round(tableau[:, i], 7) != 0)[0]
+
+      if pivotIndex.size > 1 or np.round(tableau[:, i][pivotIndex[0]], 7) != 1:
         # Coluna tem 0 na linha de c, mas não está na base
         x.append(0.0)
       else:
@@ -99,7 +101,7 @@ def simplex(tableau, n, m):
     Ak = tableau[1:, k]
 
     # Testa se todos os valores da coluna Ak são negativos
-    if (Ak <= 0).all():
+    if (Ak <= 1e-7).all():
       # É ilimitada
       x, basisColumns = find_solution(tableau, n, m)
       # Fixa a coluna k como 1 no certificado e define os outros valores como 0
@@ -120,13 +122,14 @@ def simplex(tableau, n, m):
     # É preciso somar 1 para corrigir o índice
     r = gt0values[minDiv] + 1
 
-    tableau[r] = tableau[r] * (1 / tableau[r, k])
+    tableau[r] /=  tableau[r, k]
 
     # Eliminação Gaussiana
     # O objetivo é colocar o tableau na forma canônica
     for i in range(0, n + 1):
       if i != r and tableau[i, k] != 0:
         tableau[i] -= tableau[i, k] * tableau[r]
+
 def main():
   # n restrições e m variáveis
   [n, m] = input().split()
