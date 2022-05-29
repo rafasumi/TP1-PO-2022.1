@@ -20,7 +20,7 @@ def add_slack_vars(A, b, n):
 def add_vero(A, n):
   return np.append(np.identity(n), A, axis=1)
 
-# Função auxiliar que gera um tableau a partir de uma matriz A e uma matriz c
+# Função auxiliar que gera um tableau a partir do tableau auxiliar
 def get_tableau(tableau_aux, c, n, m, basisColumns):
   # Copiando parte de baixo do tableau da auxiliar, exceto as variáveis de folga da auxiliar
   tableau = np.append(tableau_aux[:, :-n-1], tableau_aux[:, -1].reshape((n, 1)), axis=1)
@@ -53,11 +53,14 @@ def get_aux_lp(A, b, n):
   # Somando as linhas de A na parte de cima do tableau para ficar em forma canônica
   aux[0] = np.sum(A_aux, axis=0) * (-1)
 
-  aux_left = np.append(np.zeros((1, n)), np.identity(n), axis=0)
-  aux = np.append(np.append(aux[:, :-1], aux_left, axis=1), aux[:, -1].reshape((n + 1, 1)), axis=1)
+  # Insere a parte direita do tableau auxiliar
+  aux_right = np.append(np.zeros((1, n)), np.identity(n), axis=0)
+  aux = np.append(np.append(aux[:, :-1], aux_right, axis=1), aux[:, -1].reshape((n + 1, 1)), axis=1)
 
   return aux
 
+# Encontra uma solução viável a partir de um tableau em estado de ótimo/ilimitada
+# Também retorna o índice das colunas da base
 def find_solution(tableau, n, m):
   x = []
   # Lista com as colunas da base e a linha onde fica o valor 1
@@ -149,6 +152,7 @@ def main():
   # Gera a PL auxiliar e faz o Simplex para verificar se a PL original é viável ou inviável
   aux = get_aux_lp(A, b, n)
 
+  # Aplica o Simplex na PL auxiliar
   result, values, tableau_aux, basisColumns = simplex(aux, n, m)
   if result == OPTIMAL:
     optimalVal, _, certificate = values
@@ -166,6 +170,7 @@ def main():
   # Monta o tableau
   tableau = get_tableau(tableau_aux[1:, :], c, n, m, basisColumns)
 
+  # Aplica o Simplex
   result, values, _, _ = simplex(tableau, n, m)
 
   if result == OPTIMAL:
